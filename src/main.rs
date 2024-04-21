@@ -1,8 +1,8 @@
 // Uncomment this block to pass the first stage
-use std::net::{TcpListener, TcpStream};
+use std::{io::Write, net::{TcpListener, TcpStream}};
 
-fn handle_connection(stream: TcpStream) {
-    println!("HTTP/1.1 200 OK\r\n\r\n");
+fn handle_connection(mut stream: TcpStream) {
+    stream.write("HTTP/1.1 200 OK\r\n\r\n".as_bytes()).unwrap();
 }
 
 fn main() -> std::io::Result<()> {
@@ -15,8 +15,8 @@ fn main() -> std::io::Result<()> {
 
     for stream in listener.incoming() {
         match stream {
-            Ok(_stream) => {
-                handle_connection(_stream);
+            Ok(stream) => {
+                handle_connection(stream);
             }
             Err(e) => {
                 println!("error: {}", e);
