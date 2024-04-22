@@ -20,6 +20,33 @@ fn handle_connection(mut reader: BufReader<TcpStream>, mut writer: BufWriter<Tcp
         writer.write("HTTP/1.1 200 OK\r\n\r\n".as_bytes()).unwrap();
         return;
     }
+
+    let path_lenght = path.len();
+
+    if path_lenght > 0 {
+        let first_path = path.split("/").nth(1).unwrap();
+        if path.split("/").count() <= 2 || first_path == "echo" {
+            let text = if first_path == "echo" {
+                path.replace("/echo/", "")
+            } else {
+                path.replace("/", "")
+            };
+
+            let content_lenght = text.len();
+
+            writer
+            .write(
+                format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}\r\n\r\n",
+                    content_lenght,
+                    text
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        }
+    }
+
     writer
         .write("HTTP/1.1 404 Not Found\r\n\r\n".as_bytes())
         .unwrap();
