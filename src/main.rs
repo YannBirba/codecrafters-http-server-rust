@@ -1,13 +1,15 @@
 // Uncomment this block to pass the first stage
 use std::{
+    env, fs,
     io::{BufRead, BufReader, BufWriter, Write},
     net::{TcpListener, TcpStream},
+    path::Path,
     thread,
 };
 
 fn handle_connection(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStream>) {
     // Base response is 404 until we handle it
-    let mut response = String::from("HTTP/1.1 404 Not Found\r\n\r\n");
+    let mut response = String::new();
 
     let mut request_lines = Vec::new();
 
@@ -35,19 +37,40 @@ fn handle_connection(mut reader: BufReader<TcpStream>, mut writer: BufWriter<Tcp
         response = String::from("HTTP/1.1 200 OK\r\n\r\n");
     }
 
+    if path.starts_with("/files") && response.len() == 0 {
+        let args: Vec<String> = env::args().collect();
+
+        let dir = args.last().unwrap();
+        let filename = path.replace("/files", "");
+
+        if Path::new(&dir).exists() {
+            let file_content = fs::read_to_string(format!("{}/{}", dir, filename));
+
+            match file_content {
+                Ok(file_content) => {
+                    let content_lenght = file_content.len();
+                    response = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\n\r\n{}\r\n\r\n",
+                            content_lenght,
+                            file_content
+                        );
+                }
+                Err(_) => {
+                    response = String::from("HTTP/1.1 404 Not Found\r\n\r\n");
+                }
+            }
+        }
+    }
+
     let path_lenght = path.len();
 
-    if path_lenght > 0 {
+    if path_lenght > 0 && response.len() == 0 {
         let first_path = path.split("/").nth(1).unwrap();
 
         if path == "/user-agent" {
             let user_agent_line = request_lines.iter().find(|&x| x.contains("User")).unwrap();
 
-            println!("{:?}", user_agent_line);
-
             let text = user_agent_line.split(": ").last().unwrap();
-
-            println!("{:?}", text);
 
             let content_lenght: usize = text.len();
 
@@ -71,6 +94,9 @@ fn handle_connection(mut reader: BufReader<TcpStream>, mut writer: BufWriter<Tcp
                     text
                 );
         }
+    }
+    if response.len() == 0 {
+        response = String::from("HTTP/1.1 404 Not Found\r\n\r\n");
     }
 
     // Send response to client
