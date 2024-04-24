@@ -2,6 +2,7 @@
 use std::{
     io::{BufRead, BufReader, BufWriter, Write},
     net::{TcpListener, TcpStream},
+    thread,
 };
 
 fn handle_connection(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStream>) {
@@ -81,7 +82,7 @@ fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
 
     for stream in listener.incoming() {
-        match stream {
+        thread::spawn(|| match stream {
             Ok(stream) => {
                 let reader = BufReader::new(stream.try_clone().unwrap());
                 let writer = BufWriter::new(stream.try_clone().unwrap());
@@ -90,7 +91,7 @@ fn main() -> std::io::Result<()> {
             Err(e) => {
                 println!("error: {}", e);
             }
-        }
+        });
     }
 
     Ok(())
