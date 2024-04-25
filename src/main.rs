@@ -1,48 +1,71 @@
-// Uncomment this block to pass the first stage
 use std::{
-    env, fs,
-    io::{BufRead, BufReader, BufWriter, Write},
+    env,
+    fs::{self, File},
+    io::{BufReader, BufWriter, Read, Write},
     net::{TcpListener, TcpStream},
     path::Path,
     thread,
 };
 
-fn handle_connection(mut reader: BufReader<TcpStream>, mut writer: BufWriter<TcpStream>) {
-    // Base response is 404 until we handle it
-    let mut response = String::new();
+fn parse_request(mut reader: BufReader<TcpStream>) -> (String, Vec<String>) {
+    let mut buffer = [0; 2048];
+    reader.read(&mut buffer).unwrap();
+    let request_str = std::str::from_utf8(&buffer).unwrap();
 
-    let mut request_lines = Vec::new();
+    let lines: Vec<String> = request_str.lines().map(|line| line.to_string()).collect();
 
-    // Read all request lines until we found an empty line
-    loop {
-        let mut line = String::new();
-        match reader.read_line(&mut line) {
-            Ok(0) => break, // End
-            Ok(_) => {
-                if line.trim().is_empty() {
-                    break; // Empty line, end of request
-                }
-                request_lines.push(line.trim().to_string());
-            }
-            Err(err) => {
-                eprintln!("Erreur de lecture de la requête : {}", err);
-                return;
-            }
+    // get body
+    let mut collect = false;
+    let mut body = String::from("");
+    for line in &lines {
+        if collect {
+            body.push_str(line);
+        }
+        if line.is_empty() {
+            collect = true;
         }
     }
+    body = body.trim_matches(char::from(0)).to_string();
 
+    (body, lines)
+}
+
+fn handle_connection(
+    mut writer: BufWriter<TcpStream>,
+    parsed_request: (String, Vec<String>),
+) {
+    // Create base response variable to be overrited
+    let mut response = String::new();
+
+    let request_lines = parsed_request.1;
+
+    let body = parsed_request.0;
+
+    let method = request_lines.get(0).unwrap().split(" ").nth(0).unwrap();
     let path = request_lines.get(0).unwrap().split(" ").nth(1).unwrap();
+
+    let args: Vec<String> = env::args().collect();
+    let dir = args.last().unwrap();
+    let filename = path.replace("/files", "");
+
+    if method == "POST" {
+        let file_path = format!("{}/{}", dir, filename);
+
+        if Path::new(&file_path).exists() {
+            response = String::from("HTTP/1.1 404 Not Found\r\n\r\n");
+        } else {
+            let mut file = File::create(file_path).unwrap();
+            file.write_all(body.as_bytes()).unwrap();
+
+            response = String::from("HTTP/1.1 201 Created\r\n\r\n");
+        }
+    }
 
     if path == "/" {
         response = String::from("HTTP/1.1 200 OK\r\n\r\n");
     }
 
     if path.starts_with("/files") && response.len() == 0 {
-        let args: Vec<String> = env::args().collect();
-
-        let dir = args.last().unwrap();
-        let filename = path.replace("/files", "");
-
         if Path::new(&dir).exists() {
             let file_content = fs::read_to_string(format!("{}/{}", dir, filename));
 
@@ -112,10 +135,11 @@ fn main() -> std::io::Result<()> {
             Ok(stream) => {
                 let reader = BufReader::new(stream.try_clone().unwrap());
                 let writer = BufWriter::new(stream.try_clone().unwrap());
-                handle_connection(reader, writer)
+                let parsed_request = parse_request(reader);
+                handle_connection(writer, parsed_request)
             }
             Err(e) => {
-                println!("error: {}", e);
+                eprintln!("error: {}", e);
             }
         });
     }
